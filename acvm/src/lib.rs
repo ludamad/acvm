@@ -92,7 +92,18 @@ fn first_missing_assignment(
     })
 }
 
-pub trait Backend: SmartContract + ProofSystemCompiler + PartialWitnessGenerator + Default {}
+pub trait Backend:
+    SmartContract + ProofSystemCompiler + PartialWitnessGenerator + ReferenceString + Default
+{
+}
+
+pub trait ReferenceString {
+    type ReferenceString; // TODO: Figure out serde trait
+
+    // TODO: Figure out Err type
+    // TODO: Figure out async trait
+    fn get_reference_string(&self, circuit: &Circuit) -> Result<Self::ReferenceString, String>;
+}
 
 /// This component will generate the backend specific output for
 /// each OPCODE.
@@ -194,14 +205,18 @@ pub trait PartialWitnessGenerator {
     ) -> Result<OpcodeResolution, OpcodeResolutionError>;
 }
 
-pub trait SmartContract {
+pub trait SmartContract: ReferenceString {
     // TODO: Allow a backend to support multiple smart contract platforms
 
     /// Returns an Ethereum smart contract to verify proofs against a given verification key.
-    fn eth_contract_from_vk(&self, verification_key: &[u8]) -> String;
+    fn eth_contract_from_vk(
+        &self,
+        reference_string: &Self::ReferenceString,
+        verification_key: &[u8],
+    ) -> String;
 }
 
-pub trait ProofSystemCompiler {
+pub trait ProofSystemCompiler: ReferenceString {
     /// The NPC language that this proof system directly accepts.
     /// It is possible for ACVM to transpile to different languages, however it is advised to create a new backend
     /// as this in most cases will be inefficient. For this reason, we want to throw a hard error
@@ -216,13 +231,18 @@ pub trait ProofSystemCompiler {
 
     /// Generates a proving and verification key given the circuit description
     /// These keys can then be used to construct a proof and for its verification
-    fn preprocess(&self, circuit: &Circuit) -> (Vec<u8>, Vec<u8>);
+    fn preprocess(
+        &self,
+        reference_string: &Self::ReferenceString,
+        circuit: &Circuit,
+    ) -> (Vec<u8>, Vec<u8>);
 
     /// Creates a Proof given the circuit description, the initial witness values, and the proving key
     /// It is important to note that the intermediate witnesses for black box functions will not generated
     /// This is the responsibility of the proof system.
     fn prove_with_pk(
         &self,
+        reference_string: &Self::ReferenceString,
         circuit: &Circuit,
         witness_values: BTreeMap<Witness, FieldElement>,
         proving_key: &[u8],
@@ -231,6 +251,7 @@ pub trait ProofSystemCompiler {
     /// Verifies a Proof, given the circuit description, the circuit's public inputs, and the verification key
     fn verify_with_vk(
         &self,
+        reference_string: &Self::ReferenceString,
         proof: &[u8],
         public_inputs: BTreeMap<Witness, FieldElement>,
         circuit: &Circuit,
